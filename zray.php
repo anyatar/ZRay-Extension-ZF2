@@ -49,8 +49,6 @@ class ZF2 {
 	    $helperName = $context["functionArgs"][0]; // plugin  name
 	    $storage['helper']['name'] = $helperName;
 	}
-	
-	
 
 	////////////////////////////////////////////////////////////////
 	//   PRIVATES
@@ -233,9 +231,6 @@ class ZF2 {
 	}
 	
 	private function formatTime($ms) {
-		return $ms;
-		
-		//$uSec = $input % 1000;
 		$input = floor($ms / 1000);
 		return $input;
 	}
@@ -247,7 +242,6 @@ class ZF2 {
  */
 class ClosureStub {
 }
-
 
 $zf2Storage = new ZF2();
 
