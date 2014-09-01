@@ -12,6 +12,7 @@ class ZF2 {
 	
 	private $isConfigSaved = false;
 	private $isModulesSaved = false;
+	private $isEventSaved = false;
 	private $isLatestVersionSaved = false;
 	
 	private $backtrace = null;
@@ -20,17 +21,16 @@ class ZF2 {
 		$mvcEvent = $context["functionArgs"][1];
 		
 		if ($mvcEvent instanceof MvcEvent) {
-			$storage['event'] = array(	'name' => $context["functionArgs"][0],
+			$storage['event'][] = array(	'name' => $context["functionArgs"][0],
 										'target' => $this->getEventTarget($mvcEvent),
 										'file'   => $this->getEventTriggerFile(),
 										'line'   => $this->getEventTriggerLine(),
 										'memory' => $this->formatSizeUnits(memory_get_usage(true)),
-										'time' => $this->formatTime($context['durationInclusive']) . ' ms');
-			
+										'time' => $this->formatTime($context['durationInclusive']) . 'ms');
 		} elseif (class_exists('ZF\MvcAuth\MvcAuthEvent') && is_a($mvcEvent, 'ZF\MvcAuth\MvcAuthEvent') && $mvcEvent->getIdentity()) {
 			//event: authentication, authentication.post authorization authorization.post in Apigility
-			//$storage['identity_role'][] = $mvcEvent->getIdentity()->getRoleId();
-			$storage['Mvc_Auth_Event'] = array(	'eventName' => $context["functionArgs"][0],
+			$storage['identity_role'][] = array('roleId' => $mvcEvent->getIdentity()->getRoleId());
+			$storage['Mvc_Auth_Event'][] = array(	'eventName' => $context["functionArgs"][0],
 												'AuthenticationService' => $mvcEvent->getAuthenticationService(),
 												'hasAuthenticationResult' => $mvcEvent->hasAuthenticationResult(),
 												'AuthorizationService' => $mvcEvent->getAuthorizationService(),
@@ -38,23 +38,23 @@ class ZF2 {
 												'isAuthorized' => $mvcEvent->isAuthorized());
 		}
 		
-		$this->collectVersionData();
+		$this->collectVersionData($storage);
 		$this->collectModules($mvcEvent, $storage);
 		$this->collectRequest($context["functionArgs"][0], $mvcEvent, $storage);
 		$this->collectConfig($mvcEvent, $storage);
 	}
 	
-	
 	public function storeHelperExit($context, &$storage) {
 	    $helperName = $context["functionArgs"][0]; // plugin  name
-	    $storage['helper']['name'] = $helperName;
+	    $storage['helper'][] = array ('name' => $helperName);
 	}
+	
 
 	////////////////////////////////////////////////////////////////
 	//   PRIVATES
 	////////////////////////////////////////////////////////////////
 	
-	private function collectVersionData() {
+	private function collectVersionData(&$storage) {
 		if ($this->isLatestVersionSaved){
 			return;
 		}
@@ -65,7 +65,7 @@ class ZF2 {
 		$isLatest = ($isLatest) ? 'yes' : 'no';
 		$latest = ($latest === null) ? 'N/A' : $latest;
 		
-		$storage['latestVersion'][] = array(Version::VERSION, $isLatest, $latest);
+		$storage['version'][] = array('version' => Version::VERSION, 'isLatest' => $isLatest,'latest' => $latest);
 		$this->isLatestVersionSaved = true;
 	}
 	
@@ -86,7 +86,6 @@ class ZF2 {
 		/* @var $moduleManager \Zend\ModuleManager\ModuleManagerInterface */
 		$moduleManager  = $serviceManager->get('ModuleManager');
 		$modules = array_keys($moduleManager->getLoadedModules());
-		
 		$storage['modules'][] = $modules;
 		$this->isModulesSaved = true;
 	}
@@ -143,12 +142,12 @@ class ZF2 {
 		}
 	
 		$data = array(
-				'templates'  => $templates,
 				'method'     => $mvcEvent->getRequest()->getMethod(),
 				'status'     => $mvcEvent->getResponse()->getStatusCode(),
 				'route'      => ($match === null) ? 'N/A' : $match->getMatchedRouteName(),
 				'action'     => ($match === null) ? 'N/A' : $match->getParam('action', 'N/A'),
 				'controller' => ($match === null) ? 'N/A' : $match->getParam('controller', 'N/A'),
+				'templates'  => $templates,
 		);
 		$storage['request'][] = $data;
 	}
@@ -169,16 +168,20 @@ class ZF2 {
 		$serviceLocator = $application->getServiceManager();
 		
 		if ($serviceLocator->has('Config')) {
-			$storage['config'][] = $this->makeArraySerializable($serviceLocator->get('Config'));
+    		$config = $this->makeArraySerializable($serviceLocator->get('Config'));
+    		$config = $this->reorderArray($config);
+			$storage['config'][] = $config;
 		}
 		
 		if ($serviceLocator->has('ApplicationConfig')) {
-			$storage['applicationConfig'][] = $this->makeArraySerializable($serviceLocator->get('ApplicationConfig'));
+    		$applicationConfig = $this->makeArraySerializable($serviceLocator->get('ApplicationConfig'));
+    		$applicationConfig = $this->reorderArray($applicationConfig);
+			$storage['applicationConfig'][] = array('dummy' => 'dummy') + $applicationConfig;
 		}
 		
 		$this->isConfigSaved = true;
 	}
-	
+
 	/**
 	 * Replaces the un-serializable items in an array with stubs
 	 *
@@ -188,25 +191,36 @@ class ZF2 {
 	 */
 	private function makeArraySerializable($data)
 	{
-		$serializable = array();
+	    $serializable = array();
 	
-		foreach (ArrayUtils::iteratorToArray($data) as $key => $value) {
-			if ($value instanceof Traversable || is_array($value)) {
-				$serializable[$key] = $this->makeArraySerializable($value);
+	    foreach (ArrayUtils::iteratorToArray($data) as $key => $value) {
+	        if ($value instanceof Traversable || is_array($value)) {
+	            $serializable[$key] = $this->makeArraySerializable($value);
 	
-				continue;
-			}
+	            continue;
+	        }
 	
-			if ($value instanceof Closure) {
-				$serializable[$key] = new ClosureStub();
+	        if ($value instanceof Closure) {
+	            $serializable[$key] = new ClosureStub();
 	
-				continue;
-			}
+	            continue;
+	        }
 	
-			$serializable[$key] = $value;
-		}
+	        $serializable[$key] = $value;
+	    }
 	
-		return $serializable;
+	    return $serializable;
+	}
+	
+	private function reorderArray($config) {
+	    $reorderedArray = array();
+	    foreach ($config as $key => $value) {
+	       if (!is_array($value) && !is_object($value)) {
+	           unset($config[$key]);
+	           $reorderedArray[$key] = $value;
+	       }
+	    }
+	    return $reorderedArray + $config;
 	}
 	
 	private function formatSizeUnits($bytes) {
@@ -231,6 +245,7 @@ class ZF2 {
 	}
 	
 	private function formatTime($ms) {
+		//$uSec = $input % 1000;
 		$input = floor($ms / 1000);
 		return $input;
 	}
@@ -242,6 +257,7 @@ class ZF2 {
  */
 class ClosureStub {
 }
+
 
 $zf2Storage = new ZF2();
 
