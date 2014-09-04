@@ -49,7 +49,11 @@ class ZF2 {
 	    $storage['helper'][] = array ('name' => $helperName);
 	}
 	
-
+	public function storeApplicationExit($context, &$storage) {
+	   $Zend_Mvc_Application = $context['this'];
+	   $storage['response'][] = $Zend_Mvc_Application->getResponse();
+	}
+	
 	////////////////////////////////////////////////////////////////
 	//   PRIVATES
 	////////////////////////////////////////////////////////////////
@@ -266,4 +270,5 @@ $zre = new \ZRayExtension("zf2");
 
 $zre->traceFunction("Zend\EventManager\EventManager::triggerListeners",  function(){}, array($zf2Storage, 'storeTriggerExit'));
 $zre->traceFunction("Zend\View\Renderer\PhpRenderer::plugin",  function(){}, array($zf2Storage, 'storeHelperExit'));
+$zre->traceFunction("Zend\Mvc\Application::run",  function(){}, array($zf2Storage, 'storeApplicationExit'));
 
