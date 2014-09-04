@@ -22,11 +22,11 @@ class ZF2 {
 		
 		if ($mvcEvent instanceof MvcEvent) {
 			$storage['event'][] = array(	'name' => $context["functionArgs"][0],
-										'target' => $this->getEventTarget($mvcEvent),
-										'file'   => $this->getEventTriggerFile(),
-										'line'   => $this->getEventTriggerLine(),
-										'memory' => $this->formatSizeUnits(memory_get_usage(true)),
-										'time' => $this->formatTime($context['durationInclusive']) . 'ms');
+    										'target' => $this->getEventTarget($mvcEvent),
+    										'file'   => $this->getEventTriggerFile(),
+    										'line'   => $this->getEventTriggerLine(),
+    										'memory' => $this->formatSizeUnits(memory_get_usage(true)),
+    										'time' => $this->formatTime($context['durationInclusive']) . 'ms');
 		} elseif (class_exists('ZF\MvcAuth\MvcAuthEvent') && is_a($mvcEvent, 'ZF\MvcAuth\MvcAuthEvent') && $mvcEvent->getIdentity()) {
 			//event: authentication, authentication.post authorization authorization.post in Apigility
 			$storage['identity_role'][] = array('roleId' => $mvcEvent->getIdentity()->getRoleId());
@@ -39,9 +39,8 @@ class ZF2 {
 		}
 		
 		$this->collectVersionData($storage);
-		$this->collectModules($mvcEvent, $storage);
 		$this->collectRequest($context["functionArgs"][0], $mvcEvent, $storage);
-		$this->collectConfig($mvcEvent, $storage);
+		$this->collectConfigurations($mvcEvent, $storage);
 	}
 	
 	public function storeHelperExit($context, &$storage) {
@@ -50,8 +49,9 @@ class ZF2 {
 	}
 	
 	public function storeApplicationExit($context, &$storage) {
-	   $Zend_Mvc_Application = $context['this'];
-	   $storage['response'][] = $Zend_Mvc_Application->getResponse();
+	    $Zend_Mvc_Application = $context['this'];
+	    $response = $Zend_Mvc_Application->getResponse();
+	    $storage['response'][] = $response;
 	}
 	
 	////////////////////////////////////////////////////////////////
@@ -71,27 +71,6 @@ class ZF2 {
 		
 		$storage['version'][] = array('version' => Version::VERSION, 'isLatest' => $isLatest,'latest' => $latest);
 		$this->isLatestVersionSaved = true;
-	}
-	
-	private function collectModules($mvcEvent, &$storage) {
-		if ($this->isModulesSaved) {
-			return;
-		}
-		
-		if (!($mvcEvent instanceof MvcEvent)) {
-			return;
-		}
-		
-		if (! $application = $mvcEvent->getApplication()) {
-			return;
-		}
-	
-		$serviceManager = $application->getServiceManager();
-		/* @var $moduleManager \Zend\ModuleManager\ModuleManagerInterface */
-		$moduleManager  = $serviceManager->get('ModuleManager');
-		$modules = array_keys($moduleManager->getLoadedModules());
-		$storage['modules'][] = $modules;
-		$this->isModulesSaved = true;
 	}
 	
 	/**
@@ -156,7 +135,7 @@ class ZF2 {
 		$storage['request'][] = $data;
 	}
 	 	
-	private function collectConfig($mvcEvent, &$storage) {
+	private function collectConfigurations($mvcEvent, &$storage) {
 		if (!($mvcEvent instanceof MvcEvent)) {
 			return;
 		}
@@ -172,20 +151,44 @@ class ZF2 {
 		$serviceLocator = $application->getServiceManager();
 		
 		if ($serviceLocator->has('Config')) {
+		    
     		$config = $this->makeArraySerializable($serviceLocator->get('Config'));
-    		$config = $this->reorderArray($config);
-			$storage['config'][] = $config;
+    		$this->collectConfig($config, $storage);
 		}
 		
 		if ($serviceLocator->has('ApplicationConfig')) {
+		    
     		$applicationConfig = $this->makeArraySerializable($serviceLocator->get('ApplicationConfig'));
-    		$applicationConfig = $this->reorderArray($applicationConfig);
-			$storage['applicationConfig'][] = array('dummy' => 'dummy') + $applicationConfig;
+    		$this->collectModules($applicationConfig['modules'], $storage);
+    		$this->collectApplicationConfig($applicationConfig, $storage);
 		}
 		
 		$this->isConfigSaved = true;
 	}
 
+	private function collectConfig($config, &$storage) {
+	    foreach ($config as $name => $data) {
+	        if (is_string($data)) {
+	            $storage['config'][] = array( 'name' => $name, 'data' => $data);
+	        } else {
+	            $storage['config'][] = array( 'name' => $name, 'data' => var_export($data, true));
+	        }
+	    }
+	}
+	
+	private function collectApplicationConfig($applicationConfig, &$storage) {
+	    $storage['applicationConfig'][] = array('name' => 'modules', 'data' => $applicationConfig['modules']);
+	    $storage['applicationConfig'][] = array('name' => 'module_listener_options[config_glob_paths]', 'data' => $applicationConfig['module_listener_options']['config_glob_paths']);
+	    $storage['applicationConfig'][] = array('name' => 'module_listener_options[module_paths]', 'data' => $applicationConfig['module_listener_options']['module_paths']);
+	    $storage['applicationConfig'][] = array('name' => 'listeners', 'data' => $applicationConfig['listeners']);
+	}
+	
+	private function collectModules ($modulesConfig, &$storage) {
+	    foreach ($modulesConfig as $name) {
+	        $storage['modules'][] = array ('name' => $name);
+	    }
+	}
+	
 	/**
 	 * Replaces the un-serializable items in an array with stubs
 	 *
