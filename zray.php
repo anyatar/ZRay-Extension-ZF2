@@ -51,7 +51,14 @@ class ZF2 {
 	public function storeApplicationExit($context, &$storage) {
 	    $Zend_Mvc_Application = $context['this'];
 	    $response = $Zend_Mvc_Application->getResponse();
-	    $storage['response'][] = $response;
+	   
+	    //Zend\Http\PhpEnvironment\Response
+	    $storage['response'][] = array (   'cookie' => $response->getCookie(),
+	                                       'status' => $response->getStatusCode(),
+	                                       'version' => $response->getVersion(),
+	                                       'reasonPhase' => $response->getReasonPhrase(),
+	                                       'body' => $response->getBody(),
+	                                       'contentSent' => $response->contentSent());
 	}
 	
 	////////////////////////////////////////////////////////////////
